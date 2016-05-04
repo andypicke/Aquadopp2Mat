@@ -1,25 +1,30 @@
-function aqdp=MakeAQDPfile(datadir,fnamebase,whbins,whsamp)
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function aqdp=MakeAQDPfile(datadir,fnamebase,whbins)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
-% function aqdp=MakeAQDPfile(datadir,fnamebase)
+% function aqdp=MakeAQDPfile(datadir,fnamebase,whbins)
 %
-% Read Aquadopp data files and put all
+% Read Nortek Aquadopp current meter data files and put all
 % data into a matlab structure 'aqdp'
 %
-% AQDP files are in folder 'datadir' and are named
+% AQDP data files should be in folder 'datadir' and are named
 % 'fnamebase.hdr','fnamebase.v1' etc.
 %
+% INPUTS:
+%   datadir  - folder containing Aquadopp data
+%   fnamebase - name of files
+%   whbins - which bins to retrieve
 %
+%------------------------
 % Original AP 2 Aug 2012
 % 16 Sept - Adding option to get only some bins (to reduce file size for
 % large deployments or if only interested in 1 beam).
-%
 % 4 Oct 2012 AP - Also get amplitude & correlation data
 % 4 Oct AP - add option to only get specified time range (whsamp)
-%~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+% 05/04/16 - AP - remove 'whsamp' option, just get all data
+%~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 %%
 
-% check if all the files we need are there
+%~ 1st check if all the files we need are there
 
 if ~exist(fullfile(datadir,[fnamebase '.hdr']))
     error('header file doesnt exist')
@@ -33,13 +38,11 @@ elseif ~exist(fullfile(datadir,[fnamebase '.v3']))
     error('.v3 file doesnt exist')
 end
 
+%~ open header file
 fid=fopen(fullfile(datadir,[fnamebase '.hdr']));
-
 if fid==-1
     error('Cannot open header file')
 end
-
-
 
 %~~~~
 %Find the line in hdr file for Coordinate system
@@ -50,7 +53,6 @@ whline=1;
 while foundit==0
     %
     tline=fgetl(fid);
-    %
     %
     if length(tline>0) % some lines are empty...
         %
@@ -85,7 +87,6 @@ while foundit==0
     %
     tline=fgetl(fid);
     %
-    %
     if length(tline>0) % some lines are empty...
         %
         if strcmp(tline(1:10),'Serial num') % find line that starts with
@@ -101,9 +102,6 @@ end
 
 aqdp.SerialNum=str2num(tline(end-13:end));
 %%
-%~~~
-
-%
 %~~~~
 % Get the instrument transform matrix (needed for coordinate
 % system transform
@@ -114,7 +112,6 @@ whline=1;
 while foundit==0
     %
     tline=fgetl(fid);
-    %
     %
     if length(tline>0) % some lines are empty...
         %
@@ -129,7 +126,7 @@ while foundit==0
     whline=whline+1;
     %
 end
-
+%
 aqdp.T=nan*ones(3,3);
 aqdp.T(1,1:3)=str2num(tline(end-21:end));
 tline=fgetl(fid);
@@ -139,22 +136,17 @@ aqdp.T(3,1:3)=str2num(tline(end-21:end));
 
 %~~~
 %
-
-
-%
 % Now load sensor data (time, heading, pitch, roll etc
-%out=LoadAQDPdat(fullfile(datadir,[cruise '.sen']));
 disp('loading sensor data (time, pitch, roll etc')
 out=importdata(fullfile(datadir,[fnamebase '.sen']));
 
 %
-day=out(whsamp,2);
-month=out(whsamp,1);
-year=out(whsamp,3);
-hour=out(whsamp,4);
-min=out(whsamp,5);
-sec=out(whsamp,6);
-
+day=out(:,2);
+month=out(:,1);
+year=out(:,3);
+hour=out(:,4);
+min=out(:,5);
+sec=out(:,6);
 %
 dnum=nan*ones(1,length(day));
 yday=dnum;
@@ -164,28 +156,25 @@ for jj=1:length(day)
     %    DisplayProgress(jj,1000)
     dnum(jj)=datenum(year(jj),month(jj),day(jj),hour(jj),min(jj),sec(jj));
 end
-
+%
 aqdp.dtnum=dnum;
 aqdp.yday=datenum2yday(dnum);
 
 clear month day year hour min sec
 
-
 % get heading,pitch,roll
 disp('getting pitch and roll data')
-aqdp.hdg=out(whsamp,13);
-aqdp.pitch=out(whsamp,14);
-aqdp.roll=out(whsamp,15);
+aqdp.hdg=out(:,13);
+aqdp.pitch=out(:,14);
+aqdp.roll=out(:,15);
 
 % get pressure and temp.
 disp('getting pressure and temp data')
-aqdp.p=out(whsamp,16);
-%dtsec=nanmean(diffs(aqdp.yday(:)))*86400;
-%aqdp.dpdt=diffs(aqdp.p(:))./dtsec;
-aqdp.t=out(whsamp,17);
+aqdp.p=out(:,16);
+aqdp.t=out(:,17);
 clear out
 %
-% Now load velocity data
+%~~ Now load velocity data
 %
 % Velocity columns are: burst / ensemble / bin1 / bin2 ....Nbins
 %
@@ -195,7 +184,7 @@ out=importdata(fullfile(datadir,[fnamebase '.v1']));
 disp('v1 loaded; saving data ')
 
 [mm,nn]=size(out);
-mm=length(whsamp);
+%mm=length(:);
 
 if ~exist('whbins','var')
     whbins=3:nn;
@@ -209,20 +198,21 @@ end
 aqdp.burst=nan*ones(mm,1);
 aqdp.ensemble=nan*ones(mm,1);
 
-aqdp.burst=out(whsamp,1);
-aqdp.ensemble=out(whsamp,2);
+aqdp.burst=out(:,1);
+aqdp.ensemble=out(:,2);
 
-
+%
 if strcmp(aqdp.CoordSys_orig,'BEAM')
     aqdp.v1=nan*ones(mm,nn);
-    aqdp.v1=out(whsamp,whbins);
+    aqdp.v1=out(:,whbins);
 elseif strcmp(aqdp.CoordSys_orig,'ENU')
     aqdp.u=nan*ones(mm,nn);
-    aqdp.u=out(whsamp,whbins);
+    aqdp.u=out(:,whbins);
 elseif strcmp(aqdp.CoordSys_orig,'XYZ')
     aqdp.x=nan*ones(mm,nn);
-    aqdp.x=out(whsamp,whbins);
+    aqdp.x=out(:,whbins);
 end
+%
 
 clear out
 
@@ -231,13 +221,13 @@ out=importdata(fullfile(datadir,[fnamebase '.v2']));
 disp('v2 loaded; saving data ')
 if strcmp(aqdp.CoordSys_orig,'BEAM')
     aqdp.v2=nan*ones(mm,nn);
-    aqdp.v2=out(whsamp,whbins);
+    aqdp.v2=out(:,whbins);
 elseif strcmp(aqdp.CoordSys_orig,'ENU')
     aqdp.v=nan*ones(mm,nn);
-    aqdp.v=out(whsamp,whbins);
+    aqdp.v=out(:,whbins);
 elseif strcmp(aqdp.CoordSys_orig,'XYZ')
     aqdp.y=nan*ones(mm,nn);
-    aqdp.y=out(whsamp,whbins);
+    aqdp.y=out(:,whbins);
 end
 %aqdp.v2=out(:,3:end);
 
@@ -248,13 +238,13 @@ out=importdata(fullfile(datadir,[fnamebase '.v3']));
 disp('v3 loaded; saving data ')
 if strcmp(aqdp.CoordSys_orig,'BEAM')
     aqdp.v3=nan*ones(mm,nn);
-    aqdp.v3=out(whsamp,whbins);
+    aqdp.v3=out(:,whbins);
 elseif strcmp(aqdp.CoordSys_orig,'ENU')
     aqdp.w=nan*ones(mm,nn);
-    aqdp.w=out(whsamp,whbins);
+    aqdp.w=out(:,whbins);
 elseif strcmp(aqdp.CoordSys_orig,'XYZ')
     aqdp.z=nan*ones(mm,nn);
-    aqdp.z=out(whsamp,whbins);
+    aqdp.z=out(:,whbins);
 end
 clear out
 
@@ -262,42 +252,42 @@ clear out
 disp('loading a1 ')
 out=importdata(fullfile(datadir,[fnamebase '.a1']));
 aqdp.a1=nan*ones(mm,nn);
-aqdp.a1=out(whsamp,whbins);
+aqdp.a1=out(:,whbins);
 clear out
 
 % amplitudes for beam 2
 disp('loading a2 ')
 out=importdata(fullfile(datadir,[fnamebase '.a2']));
 aqdp.a2=nan*ones(mm,nn);
-aqdp.a2=out(whsamp,whbins);
+aqdp.a2=out(:,whbins);
 clear out
 
 % amplitudes for beam 3
 disp('loading a3 ')
 out=importdata(fullfile(datadir,[fnamebase '.a3']));
 aqdp.a3=nan*ones(mm,nn);
-aqdp.a3=out(whsamp,whbins);
+aqdp.a3=out(:,whbins);
 clear out
     
 % correlations for beam 1
 disp('loading c1 ')
 out=importdata(fullfile(datadir,[fnamebase '.c1']));
 aqdp.c1=nan*ones(mm,nn);
-aqdp.c1=out(whsamp,whbins);
+aqdp.c1=out(:,whbins);
 clear out
 
 % correlations for beam 1
 disp('loading c2 ')
 out=importdata(fullfile(datadir,[fnamebase '.c2']));
 aqdp.c2=nan*ones(mm,nn);
-aqdp.c2=out(whsamp,whbins);
+aqdp.c2=out(:,whbins);
 clear out
 
 % correlations for beam 1
 disp('loading c3 ')
 out=importdata(fullfile(datadir,[fnamebase '.c3']));
 aqdp.c3=nan*ones(mm,nn);
-aqdp.c3=out(whsamp,whbins);
+aqdp.c3=out(:,whbins);
 clear out
 
 aqdp.processed=[date ' with ' mfilename];
